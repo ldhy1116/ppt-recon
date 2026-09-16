@@ -1,0 +1,9 @@
+# AI PPT 结构重组 - Python 依赖
+# 安装：pip install -r requirements.txt
+# 间接依赖（lxml / Pillow / XlsxWriter / typing_extensions）由 python-pptx 自动安装
+
+python-pptx>=1.0.2
+# 中文分词与 TextRank 关键词提取；未安装时自动退化到子串匹配，不影响基本功能
+jieba>=0.42
+# 大模型排序（可选）：使用 OpenAI 兼容接口，默认对接本地 Ollama，也支持任意兼容端点
+openai>=1.0

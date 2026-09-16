@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# 运行产物（重组后的 PPT、日志）
+data/*
+!data/.gitkeep
+logs/
+*.log
+
+# 用户真实 PPT（可能含个人/机构敏感信息，禁止入库）
+# 仅提交程序化生成的脱敏合成用例（测试夹具，内容全部虚构）
+ppts/*.pptx
+!ppts/sample.pptx
+!ppts/test1.pptx
+!ppts/test2.pptx
+!ppts/test3.pptx
+
+# 密钥与本地配置
+.env
+.env.local
+
+# IDE / 系统
+.trae/
+.vscode/
+.idea/
+~$*
+Thumbs.db
+.DS_Store
