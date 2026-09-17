@@ -1,16 +1,17 @@
 # run_examples.ps1 - PPT 重组一键示例脚本（测试用例 test1/test2/test3）
 # 用法：
 #   1. 确保 Ollama 运行中（ollama serve）；未运行则自动回退关键词模式（0 token）
-#   2. PowerShell 中执行：.\run_examples.ps1
+#   2. PowerShell 中执行：.\scripts\run_examples.ps1
 # 说明：依次对三个用例执行重组，产物输出到 data\。
-#       Ollama 连接默认值已内置在 pptx_reorganize_cli.py，无需设置环境变量。
+#       Ollama 连接默认值已内置在 scripts\pptx_reorganize_cli.py，无需设置环境变量。
 
 $ErrorActionPreference = "Continue"
 
-# 工作目录设为脚本所在目录
+# 工作目录设为项目根目录（脚本位于 scripts\ 下）
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-Set-Location $scriptDir
-Write-Host "=== 工作目录：$scriptDir ===" -ForegroundColor Cyan
+$rootDir = Split-Path -Parent $scriptDir
+Set-Location $rootDir
+Write-Host "=== 工作目录：$rootDir ===" -ForegroundColor Cyan
 Write-Host "=== 大模型：Ollama qwen2.5:3b（CLI 内置默认值，未启动时自动回退关键词模式）===" -ForegroundColor Cyan
 Write-Host ""
 
@@ -26,7 +27,7 @@ $success = 0
 $failed  = 0
 foreach ($task in $tasks) {
     Write-Host "=== $($task.name) ===" -ForegroundColor Yellow
-    $cmd = "python pptx_reorganize_cli.py reorganize `"$($task.pptx)`" --purpose `"$($task.purpose)`" -o `"$($task.output)`" --smart --use-llm --trim --yes --force"
+    $cmd = "python scripts\pptx_reorganize_cli.py reorganize `"$($task.pptx)`" --purpose `"$($task.purpose)`" -o `"$($task.output)`" --smart --use-llm --trim --yes --force"
     Write-Host "CMD: $cmd" -ForegroundColor Gray
     try {
         Invoke-Expression $cmd
@@ -48,4 +49,4 @@ foreach ($task in $tasks) {
 Write-Host "=== 执行完成 ===" -ForegroundColor Cyan
 Write-Host "成功：$success / $($tasks.Count)"
 if ($failed -gt 0) { Write-Host "失败：$failed" -ForegroundColor Red }
-Write-Host "产物目录：$scriptDir\data\" -ForegroundColor Cyan
+Write-Host "产物目录：$rootDir\data\" -ForegroundColor Cyan

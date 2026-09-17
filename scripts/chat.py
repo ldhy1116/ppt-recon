@@ -5,14 +5,14 @@
 本模块是这条路线的"轻量智能体"层：用关键词与正则解析用户自然语言意图，
 调用 pptx_reorganize 核心库完成操作，并把结果格式化为人类可读文字输出。
 
-两种使用方式：
+两种使用方式（在项目根目录下运行）：
 1) 交互式 REPL（推荐用于测试）：
-    python chat.py
+    python scripts/chat.py
     > 分析一下 xxx.pptx 的结构
     < ...人类可读的结构分析结果...
 
 2) 单次执行：
-    python chat.py "把 xxx.pptx 按投资人汇报重组，输出到 data\\out.pptx"
+    python scripts/chat.py "把 xxx.pptx 按投资人汇报重组，输出到 data\\out.pptx"
 
 设计原则：
 - 不依赖大模型解析意图，纯规则解析，确定性可测
@@ -36,6 +36,10 @@ import os
 import re
 import sys
 from pathlib import Path
+
+# 本脚本位于 scripts/ 子目录：把项目根目录加入 sys.path，
+# 才能导入根下的核心库（pptx_reorganize）与配置模块（model_config）。
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 # 大模型配置：统一由 model_config 加载（.env 文件 → 内置 Ollama 默认值）
 # 外部已设置的环境变量优先；nanobot 等 Agent 可通过环境变量注入任意模型。
@@ -913,10 +917,11 @@ def main() -> int:
     """入口：支持 REPL、单次执行，以及自然语言解析自测。
 
     解析自测（只看自然语言→结构化指令，不碰 PPT，便于 PowerShell 测试）：
-      python chat.py --parse "指令"        # 模型解析 + 规则解析并排
-      python chat.py --parse-rule "指令"   # 只看规则解析（不调模型）
+      python scripts/chat.py --parse "指令"        # 模型解析 + 规则解析并排
+      python scripts/chat.py --parse-rule "指令"   # 只看规则解析（不调模型）
     """
-    cwd = Path(__file__).resolve().parent
+    # 项目根目录（脚本在 scripts/ 下，ppts/、data/、logs/ 均相对根目录定位）
+    cwd = Path(__file__).resolve().parent.parent
     core.setup_logging(str(cwd / "logs"))
 
     # 解析自测模式
@@ -933,7 +938,7 @@ def main() -> int:
         print(json.dumps(rule, ensure_ascii=False, indent=2))
         return 0
 
-    # 单次执行: python chat.py "自然语言指令"
+    # 单次执行: python scripts/chat.py "自然语言指令"
     if len(sys.argv) > 1:
         text = " ".join(sys.argv[1:])
         result = execute_command(text, cwd, auto_yes=True)

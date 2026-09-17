@@ -23,6 +23,10 @@ import os
 import sys
 from pathlib import Path
 
+# 本脚本位于 scripts/ 子目录：把项目根目录加入 sys.path，
+# 才能导入根下的核心库（pptx_reorganize）与配置模块（model_config）。
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 # 大模型配置：统一由 model_config 加载（.env 文件 → 内置 Ollama 默认值）
 # 外部已设置的环境变量优先；nanobot 等 Agent 可通过环境变量注入任意模型。
 import model_config

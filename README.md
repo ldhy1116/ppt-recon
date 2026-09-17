@@ -62,28 +62,28 @@ $env:OPENAI_MODEL    = "qwen2.5:3b"
 **方式一：一键脚本**（依次跑 test1/test2/test3 三个场景）
 
 ```powershell
-.\run_examples.ps1
+.\scripts\run_examples.ps1
 ```
 
 **方式二：自然语言入口（推荐）**
 
 ```powershell
-python chat.py "把 test3.pptx 按招生综合宣讲重组，删去旧目录增加新目录，存到 test3_intro"
+python scripts/chat.py "把 test3.pptx 按招生综合宣讲重组，删去旧目录增加新目录，存到 test3_intro"
 ```
 
 - PPT 只写文件名，程序自动在 `ppts\` 下查找
 - 产物默认写入 `data\`；`存到 xxx` 指定文件名（可省略 .pptx）
-- `python chat.py --parse "把 test1.pptx 按技术汇报重组"`：只解析意图不执行（调试用）
+- `python scripts/chat.py --parse "把 test1.pptx 按技术汇报重组"`：只解析意图不执行（调试用）
 - 写盘前先打印新顺序预览；交互式 REPL 中需输入 y 确认后才写盘
 
 **方式三：CLI 直调**
 
 ```powershell
 # 只分析结构（不写盘）
-python pptx_reorganize_cli.py analyze "ppts/test3.pptx"
+python scripts/pptx_reorganize_cli.py analyze "ppts/test3.pptx"
 
 # 重组
-python pptx_reorganize_cli.py reorganize "ppts/test3.pptx" `
+python scripts/pptx_reorganize_cli.py reorganize "ppts/test3.pptx" `
   --purpose "招生综合宣讲" -o "data/test3_intro.pptx" `
   --smart --use-llm --trim --yes --force
 ```
@@ -131,7 +131,7 @@ CLI/chat.py 两种方式等价运行。
 python -m unittest tests.test_reorganize -v
 
 # 端到端验证（结构分析，不耗 token）
-python pptx_reorganize_cli.py analyze "ppts/test3.pptx"
+python scripts/pptx_reorganize_cli.py analyze "ppts/test3.pptx"
 ```
 
 测试数据为程序化生成的**虚构内容**，以静态文件随仓库提交，三个用例分别
@@ -157,6 +157,3 @@ python pptx_reorganize_cli.py analyze "ppts/test3.pptx"
 5. **纯图片/无文本 PPT**：无法提取标题，退化为封面/总结锚定 + 原序
 6. **目录页**：基于文本框重建，原 PPT 复杂的目录母版样式不会保留
 
----
-
-详细设计与实验数据见 [docs/REPORT.md](docs/REPORT.md)。

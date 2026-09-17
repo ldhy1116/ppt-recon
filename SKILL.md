@@ -17,12 +17,12 @@ description: "按汇报目的重组PPT页面顺序（自然语言入口 chat.py�
 - "按招生宣讲的目的重组 PPT"
 - 任何涉及调整 PPT 页面顺序以适应特定汇报/演讲场景的请求
 
-## 主入口：chat.py（自然语言，推荐）
+## 主入口：scripts/chat.py（自然语言，推荐）
 
 ```powershell
 cd <仓库根目录>
 $env:PYTHONIOENCODING='utf-8'   # 防中文乱码（每个终端一次）
-python chat.py "帮我把 test3.pptx 面向招生宣讲的场景重新组织一下，并删去旧目录增加新目录，存到test3_intro"
+python scripts/chat.py "帮我把 test3.pptx 面向招生宣讲的场景重新组织一下，并删去旧目录增加新目录，存到test3_intro"
 ```
 
 - PPT 放在 `ppts\` 下，自然语言里只写文件名
@@ -103,8 +103,8 @@ nanobot 等 Agent 可直接注入环境变量切换模型，项目内部无需�
 ### CLI 直调（高级，chat.py 的底层通道）
 
 ```powershell
-python pptx_reorganize_cli.py reorganize "ppts\test3.pptx" --purpose "招生综合宣讲" -o "data\test3_intro.pptx" --smart --use-llm --trim --yes --force
-python pptx_reorganize_cli.py analyze "ppts\test3.pptx"   # 先看结构
+python scripts/pptx_reorganize_cli.py reorganize "ppts\test3.pptx" --purpose "招生综合宣讲" -o "data\test3_intro.pptx" --smart --use-llm --trim --yes --force
+python scripts/pptx_reorganize_cli.py analyze "ppts\test3.pptx"   # 先看结构
 ```
 
 解读 trace：`induce_mode`（检定路径）、`top_sections`（两级板块）、
@@ -126,12 +126,12 @@ python pptx_reorganize_cli.py analyze "ppts\test3.pptx"   # 先看结构
 
 | 文件 | 用途 |
 |------|------|
-| `chat.py` | 自然语言入口（意图解析→调用核心库） |
-| `pptx_reorganize_cli.py` | CLI 入口（参数直调） |
+| `scripts\chat.py` | 自然语言入口（意图解析→调用核心库） |
+| `scripts\pptx_reorganize_cli.py` | CLI 入口（参数直调） |
+| `scripts\run_examples.ps1` | 一键示例脚本 |
 | `pptx_reorganize.py` | 核心库（检定/两级树/投票/精排） |
 | `model_config.py` | 模型配置加载（.env→环境变量→默认值） |
 | `ppts\` | 测试 PPT 输入目录 |
 | `data\` | 输出产物目录 |
 | `tests\test_reorganize.py` | 单元测试（107 项） |
-| `run_examples.ps1` | 一键示例脚本 |
 | `README.md` | 使用文档 |
