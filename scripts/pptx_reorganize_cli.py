@@ -57,7 +57,6 @@ def cmd_reorganize(args) -> int:
     use_llm = getattr(args, "use_llm", False)
     anchor = getattr(args, "anchor_special", False)
     smart = getattr(args, "smart", False)
-    trim = getattr(args, "trim", False)
     model = getattr(args, "model", "")
     base_url = getattr(args, "base_url", "")
     api_key = getattr(args, "api_key", "")
@@ -67,32 +66,15 @@ def cmd_reorganize(args) -> int:
     else:
         if anchor:
             mode += "+特殊页锚定"
-    if trim:
-        mode += "+清理冗余分隔页"
     preview = core.preview_reorganize(
         args.pptx, args.purpose, sort_level=sort_level, use_llm=use_llm,
         model=model, base_url=base_url, api_key=api_key,
         anchor_special=anchor, smart=smart,
     )
     meta = preview.get("trace") or {}
-    # --trim：在预览阶段也应用 trim，保证预览与写盘顺序一致
-    removed_divs: list[str] = []
-    analysis = None
-    if trim:
-        induced = meta.get("induced_chapters")
-        analysis = core.analyze_pptx(args.pptx)
-        trimmed_order, removed_divs = core.trim_internal_dividers(
-            preview["order"], induced, analysis.slides)
-        preview = dict(preview)
-        preview["order"] = trimmed_order
-        title_by_idx = {s.index: s.title for s in analysis.slides}
-        preview["preview"] = [
-            {"new_position": pos + 1, "original_index": orig, "title": title_by_idx[orig]}
-            for pos, orig in enumerate(trimmed_order)
-        ]
-    # 结构硬规则：分标题绑定自己的内容，禁止两个分标题紧挨（trim 后再绑一次，幂等）
-    if analysis is None:
-        analysis = core.analyze_pptx(args.pptx)
+    # 冗余分隔页已在预览/写盘路径内部自动清理；此处再做一次幂等绑定，
+    # 作为结构安全网（无违规时原样返回）。
+    analysis = core.analyze_pptx(args.pptx)
     bound_order, hb_moves, hb_drops = core.bind_section_headings(
         preview["order"], analysis.slides)
     if hb_moves or hb_drops:
@@ -123,10 +105,6 @@ def cmd_reorganize(args) -> int:
                   f"规则精修 {fixed} 处。\n  发现章节：{' | '.join(titles)}")
         elif source == "anchor_fallback":
             print("标题归组与大模型章节检定均不可用 → 特殊页锚定兜底（③，未放弃排序）。")
-    if removed_divs:
-        print(f"清理冗余分隔页 {len(removed_divs)} 页：")
-        for r in removed_divs:
-            print(f"  - {r}")
     if hb_moves:
         print(f"分标题绑定内容 {len(hb_moves)} 页：")
         for m in hb_moves:
@@ -148,7 +126,6 @@ def cmd_reorganize(args) -> int:
         sort_level=sort_level, use_llm=use_llm,
         model=model, base_url=base_url, api_key=api_key,
         anchor_special=anchor, smart=smart,
-        trim_dividers=trim,
     )
     print(f"完成：{out}（顺序 {order}）")
     explanation = core.explain_reorganization(trace, order, core.analyze_pptx(args.pptx).slides)
@@ -217,8 +194,6 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--smart", action="store_true",
                     help="智能级联：①规则标题归组→②大模型聚类检定章节（配合--use-llm，"
                          "消耗更多token）→③特殊页锚定兜底；每级失败自动继续下一级")
-    pr.add_argument("--trim", action="store_true",
-                    help="删除章内冗余分隔页（连续分隔页去重、纯分隔页清理），为制作目录做准备")
     pr.add_argument("--model", default="", help="大模型名称，默认读环境变量 OPENAI_MODEL")
     pr.add_argument("--base-url", default="", help="API 地址，默认读环境变量 OPENAI_BASE_URL")
     pr.add_argument("--api-key", default="", help="API Key，默认读环境变量 OPENAI_API_KEY（勿写入代码）")

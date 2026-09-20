@@ -85,7 +85,7 @@ python scripts/pptx_reorganize_cli.py analyze "ppts/test3.pptx"
 # 重组
 python scripts/pptx_reorganize_cli.py reorganize "ppts/test3.pptx" `
   --purpose "招生综合宣讲" -o "data/test3_intro.pptx" `
-  --smart --use-llm --trim --yes --force
+  --smart --use-llm --yes --force
 ```
 
 | 参数 | 作用 |
@@ -94,7 +94,6 @@ python scripts/pptx_reorganize_cli.py reorganize "ppts/test3.pptx" `
 | `-o` | 输出路径 |
 | `--smart` | 智能检定级联（结构切章→标题归组→LLM 聚类→锚定兜底） |
 | `--use-llm` | 启用大模型（失败自动回退关键词模式） |
-| `--trim` | 清理章内冗余分隔页 |
 | `--yes --force` | 跳过确认 / 覆盖已存在产物 |
 | `--dry-run` | 只预览不写盘 |
 

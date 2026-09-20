@@ -103,7 +103,7 @@ nanobot 等 Agent 可直接注入环境变量切换模型，项目内部无需�
 ### CLI 直调（高级，chat.py 的底层通道）
 
 ```powershell
-python scripts/pptx_reorganize_cli.py reorganize "ppts\test3.pptx" --purpose "招生综合宣讲" -o "data\test3_intro.pptx" --smart --use-llm --trim --yes --force
+python scripts/pptx_reorganize_cli.py reorganize "ppts\test3.pptx" --purpose "招生综合宣讲" -o "data\test3_intro.pptx" --smart --use-llm --yes --force
 python scripts/pptx_reorganize_cli.py analyze "ppts\test3.pptx"   # 先看结构
 ```
 

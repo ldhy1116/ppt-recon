@@ -227,8 +227,78 @@ def check_output_path(out_path: str, src_path: Path, *, force: bool = False) -> 
 # --------------------------------------------------------------------------- #
 # 结构分析
 # --------------------------------------------------------------------------- #
+def _shape_first_line(shape) -> str:
+    if not shape.has_text_frame:
+        return ""
+    t = shape.text_frame.text.strip()
+    if not t:
+        return ""
+    return t.splitlines()[0][:TEXT_SNIPPET_LEN]
+
+
+def _shape_font_pt(shape) -> float:
+    """形状首个带显式字号 run 的字号（磅）；无显式字号返回 0。"""
+    if not shape.has_text_frame:
+        return 0.0
+    for para in shape.text_frame.paragraphs:
+        for r in para.runs:
+            if r.font.size is not None:
+                return r.font.size.pt
+    return 0.0
+
+
+# 标题带：页面顶部 22%（标准 7.5 英寸高 ≈ 1.65 英寸）内才算标题位置
+_TITLE_BAND_EMU = int(6858000 * 0.22)
+# 旧候选落到页面垂直中线以下，判定为图中标签/注释等噪声（如地图上的 Africa）
+_TITLE_NOISE_TOP = int(6858000 * 0.5)
+_TITLE_MAX_LEN = 30
+# 无意义占位短词（封面署名占位等），重选时降权
+_TITLE_JUNK = {"xxx", "xx", "n/a", "none", "title"}
+
+
+def _fallback_title(slide) -> str:
+    """无标题占位符时选标题。默认沿用形状树首个非空文本（成熟行为，覆盖面最广）；
+
+    仅当旧候选位于页面垂直中线以下（图中标签/注释，如地图上 9pt 的 Africa）
+    时，才在顶部标题带内按 字号大→纯数字降权→字数少→靠上靠左 重选，
+    且占位词降权。其余位置的第一文本一律不动，避免大号装饰标语/数字
+    反向抢占内容页标题。
+    """
+    cands = []
+    first = ""
+    for sh in slide.shapes:
+        line = _shape_first_line(sh)
+        if not line:
+            continue
+        if not first:
+            first = line
+        top = sh.top if sh.top is not None else 10**9
+        left = sh.left if sh.left is not None else 10**9
+        cands.append({"line": line, "top": int(top), "left": int(left),
+                      "size": _shape_font_pt(sh),
+                      "num": 1 if re.fullmatch(r"[0-9０-９]{1,3}", line) else 0,
+                      "junk": 1 if line.strip().lower() in _TITLE_JUNK else 0})
+    if not cands:
+        return ""
+    c0 = next((c for c in cands if c["line"] == first), cands[0])
+    if c0["top"] < _TITLE_NOISE_TOP:
+        return first  # 旧候选不在下半页，维持原行为
+
+    pool = [c for c in cands
+            if c["top"] <= _TITLE_BAND_EMU and len(c["line"]) <= _TITLE_MAX_LEN
+            and c["size"] > c0["size"]]  # 顶部候选必须严格更大才替换，
+    # 防止设计者刻意放在下方的大字号标题（44pt）被顶部更小的口号取代
+    if not pool:
+        return first
+
+    def rank(c: dict) -> tuple:
+        return (c["junk"], -c["size"], c["num"], len(c["line"]), c["top"], c["left"])
+
+    return sorted(pool, key=rank)[0]["line"]
+
+
 def _slide_title(slide) -> str:
-    """优先标题占位符，否则第一个含文本形状的首行。"""
+    """优先标题占位符，否则启发式从全部文本形状中选标题。"""
     try:
         if slide.shapes.title is not None and slide.shapes.title.has_text_frame:
             t = slide.shapes.title.text_frame.text.strip()
@@ -236,12 +306,7 @@ def _slide_title(slide) -> str:
                 return t
     except Exception:
         pass
-    for shape in slide.shapes:
-        if shape.has_text_frame:
-            t = shape.text_frame.text.strip()
-            if t:
-                return t.splitlines()[0][:TEXT_SNIPPET_LEN]
-    return ""
+    return _fallback_title(slide)
 
 
 def _slide_text(slide) -> str:
@@ -2179,12 +2244,12 @@ def reorganize_by_purpose(
     sort_level: str = "chapter", use_llm: bool = False,
     model: str = "", base_url: str = "", api_key: str = "",
     anchor_special: bool = False, smart: bool = False,
-    trim_dividers: bool = False,
 ) -> tuple[list[int], str, dict]:
     """按汇报目的重组，返回 (新顺序, 输出路径, trace)。
 
     trace 包含各环节的决策信息，可用于生成变动说明。
-    trim_dividers=True 时删除章内冗余分隔页，为制作目录做准备。
+    章内冗余/连续的纯分隔页始终自动清理（结构兜底），内容页与章首分隔页保留；
+    结构切章路径下该步骤通常为空操作。
     """
     src = validate_pptx_path(src_path)
     dst = check_output_path(dst_path, src, force=force)
@@ -2193,20 +2258,19 @@ def reorganize_by_purpose(
         analysis, purpose, sort_level=sort_level, use_llm=use_llm,
         model=model, base_url=base_url, api_key=api_key,
         anchor_special=anchor_special, smart=smart)
-    if trim_dividers:
-        induced = trace.get("induced_chapters")
-        order, removed = trim_internal_dividers(
-            order, induced, analysis.slides)
-        if removed:
-            logger.info("删除 %d 个冗余分隔页: %s", len(removed), removed)
-    # trim 可能造成新的分标题相邻/悬空，再做一次结构硬规则绑定（幂等）
+    # 结构兜底：自动清理章内冗余/连续纯分隔页（无需用户开关）
+    order, removed = trim_internal_dividers(
+        order, trace.get("induced_chapters"), analysis.slides)
+    if removed:
+        logger.info("自动清理 %d 个冗余分隔页: %s", len(removed), removed)
+    # 清理可能造成新的分标题相邻/悬空，再做一次结构硬规则绑定（幂等）
     order, hm, hd = bind_section_headings(order, analysis.slides)
     if hm:
         logger.info("分标题绑定 %d 处: %s", len(hm), hm)
     if hd:
         logger.info("删除空分标题 %d 页: %s", len(hd), hd)
-    logger.info("reorganize purpose=%r sort_level=%r use_llm=%r smart=%r trim=%r trace=%r order=%s",
-                purpose, sort_level, use_llm, smart, trim_dividers, trace, order)
+    logger.info("reorganize purpose=%r sort_level=%r use_llm=%r smart=%r trace=%r order=%s",
+                purpose, sort_level, use_llm, smart, trace, order)
     prs = Presentation(str(src))
     _rebuild_sld_id_lst(prs, order)
     prs.save(str(dst))
@@ -2497,6 +2561,11 @@ def preview_reorganize(
         analysis, purpose, sort_level=sort_level, use_llm=use_llm,
         model=model, base_url=base_url, api_key=api_key,
         anchor_special=anchor_special, smart=smart)
+    # 与 reorganize_by_purpose 写盘路径保持一致：自动清理冗余分隔页，
+    # 再做一次分标题绑定（幂等），保证预览顺序与最终文件完全相同。
+    order, _removed = trim_internal_dividers(
+        order, trace.get("induced_chapters"), analysis.slides)
+    order, _moves, _drops = bind_section_headings(order, analysis.slides)
     title_by_idx = {s.index: s.title for s in analysis.slides}
     return {
         "file": str(src),

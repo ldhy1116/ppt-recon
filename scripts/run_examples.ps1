@@ -27,7 +27,7 @@ $success = 0
 $failed  = 0
 foreach ($task in $tasks) {
     Write-Host "=== $($task.name) ===" -ForegroundColor Yellow
-    $cmd = "python scripts\pptx_reorganize_cli.py reorganize `"$($task.pptx)`" --purpose `"$($task.purpose)`" -o `"$($task.output)`" --smart --use-llm --trim --yes --force"
+    $cmd = "python scripts\pptx_reorganize_cli.py reorganize `"$($task.pptx)`" --purpose `"$($task.purpose)`" -o `"$($task.output)`" --smart --use-llm --yes --force"
     Write-Host "CMD: $cmd" -ForegroundColor Gray
     try {
         Invoke-Expression $cmd

@@ -16,7 +16,7 @@
 
 设计原则：
 - 不依赖大模型解析意图，纯规则解析，确定性可测
-- 调用核心库时默认启用 --smart --use-llm --trim（全功能）
+- 调用核心库时默认启用 --smart --use-llm（全功能）
 - 输出为人类可读文字（不只是 JSON），便于用户直接阅读
 - 写操作默认先预览，输入 y 确认后才写盘（安全要求）
 - 无法解析时给出清晰提示和示例
@@ -226,16 +226,6 @@ def _find_smart(text: str) -> bool:
     return not any(kw in text for kw in no_smart_kw)
 
 
-def _find_trim(text: str) -> bool:
-    """从自然语言中识别是否清理冗余分隔页。
-
-    提到"不清理/保留分隔页/保留所有页"等 → False
-    否则默认 True（final 版默认清理）
-    """
-    no_trim_kw = ("不清理", "保留分隔", "保留所有页", "不删", "全部保留")
-    return not any(kw in text for kw in no_trim_kw)
-
-
 def _find_toc_ops(text: str) -> tuple[bool, bool]:
     """识别"删除旧目录/增加新目录"组合操作 → (删旧目录页, 插新目录页)。
 
@@ -257,7 +247,7 @@ def _parse_intent_by_rules(text: str, cwd: Path) -> dict:
     result: dict = {"intent": None, "pptx": None, "output": None,
                     "purpose": "", "order": None, "page_move": None,
                     "sort_level": "chapter", "use_llm": True,
-                    "smart": True, "trim": True,
+                    "smart": True,
                     "del_toc": False, "add_toc": False}
     for intent, keywords in INTENT_KEYWORDS.items():
         for kw in keywords:
@@ -276,7 +266,6 @@ def _parse_intent_by_rules(text: str, cwd: Path) -> dict:
     result["sort_level"] = _find_sort_level(text)
     result["use_llm"] = _find_use_llm(text)
     result["smart"] = _find_smart(text)
-    result["trim"] = _find_trim(text)
     result["del_toc"], result["add_toc"] = _find_toc_ops(text)
     return result
 
@@ -302,7 +291,7 @@ _INTENT_PROMPT = """你是 PPT 智能重排工具的指令解析器。把用户�
 - sort_level: chapter（默认）；只有明确说单页/按页/每页打乱/不按章节才填 slide
 - order: 显式页码数组如 [3,1,2]，否则 null
 - page_move: “把第N页移到最前/最后” → {"page":N,"pos":"front"或"end"}，否则 null
-- use_llm/smart/trim: 布尔，默认 true；明确否定（不用AI/不用智能/保留分隔页）才 false
+- use_llm/smart: 布尔，默认 true；明确否定（不用AI/不用智能）才 false
 - del_toc/add_toc: 布尔，删旧目录/加新目录"""
 
 
@@ -358,6 +347,12 @@ def _norm_filename(v, *, output: bool = False) -> str | None:
     return name
 
 
+# LLM 偶尔不返回 null 而是编一个占位输出名（如 output/result），若采信会导致
+# 默认命名（原文件名_目的标签）失效且行为不可复现。此黑名单内的名字在模型路径
+# 视为未提供，交回默认命名；用户原话显式给出的输出名走规则提取，不受影响。
+_LLM_OUTPUT_FILLER = {"output", "result", "new", "out", "untitled"}
+
+
 def _parse_intent_by_llm(text: str) -> dict | None:
     """模型解析并逐字段校验归一；任一字段非法即丢弃该字段（交规则补）。"""
     data = core._llm_chat_json(
@@ -374,7 +369,7 @@ def _parse_intent_by_llm(text: str) -> dict | None:
     elif "pptx" in data and data.get("pptx") in (None, ""):
         out["pptx"] = None  # 模型显式判空优先（修规则把输出名当输入名的问题）
     o = _norm_filename(data.get("output"), output=True)
-    if o is not None:
+    if o is not None and o.lower().removesuffix(".pptx") not in _LLM_OUTPUT_FILLER:
         out["output"] = o
     purpose = _norm_purpose(data.get("purpose"))
     if purpose:
@@ -387,7 +382,7 @@ def _parse_intent_by_llm(text: str) -> dict | None:
     pm = _norm_page_move(data.get("page_move"))
     if pm is not None:
         out["page_move"] = pm
-    for k in ("use_llm", "smart", "trim", "del_toc", "add_toc"):
+    for k in ("use_llm", "smart", "del_toc", "add_toc"):
         b = _as_bool(data.get(k))
         if b is not None:
             out[k] = b
@@ -524,7 +519,6 @@ def execute_command(text: str, cwd: Path, *, auto_yes: bool = False) -> str:
         sort_level = parsed["sort_level"]
         use_llm = parsed["use_llm"]
         smart = parsed["smart"]
-        trim = parsed["trim"]
         del_toc = parsed["del_toc"]
         add_toc = parsed["add_toc"]
         out = parsed["output"]
@@ -544,25 +538,8 @@ def execute_command(text: str, cwd: Path, *, auto_yes: bool = False) -> str:
         mode_label = "按章节排序" if sort_level == "chapter" else "单页独立排序"
         llm_label = "，大模型排序" if use_llm else ""
         smart_label = "，智能级联" if smart else ""
-        trim_label = "，清理分隔页" if trim else ""
         trace = preview.get("trace")
         analysis = None
-        # trim 预览：与 CLI 一致，在预览阶段也应用 trim
-        if trim:
-            induced = trace.get("induced_chapters") if trace else None
-            analysis = core.analyze_pptx(pptx)
-            trimmed_order, removed_divs = core.trim_internal_dividers(
-                preview["order"], induced, analysis.slides)
-            preview = dict(preview)
-            preview["order"] = trimmed_order
-            title_by_idx = {s.index: s.title for s in analysis.slides}
-            preview["preview"] = [
-                {"new_position": pos + 1, "original_index": orig,
-                 "title": title_by_idx[orig]}
-                for pos, orig in enumerate(trimmed_order)
-            ]
-            if removed_divs:
-                trim_label = f"，清理 {len(removed_divs)} 页分隔页"
         # 删除旧目录页：识别目录特殊页并从最终顺序中剔除
         toc_note = ""
         if del_toc:
@@ -584,12 +561,12 @@ def execute_command(text: str, cwd: Path, *, auto_yes: bool = False) -> str:
             else:
                 toc_note = "，未发现旧目录页"
         # 结构硬规则：分标题页必须绑定自己的内容，禁止两个分标题紧挨。
-        # trim/删目录可能造成新的相邻或悬空，在最终顺序上再绑定一次（幂等）。
+        # 删目录可能造成新的相邻或悬空，在最终顺序上再绑定一次（幂等）。
         if analysis is None:
             analysis = core.analyze_pptx(pptx)
         bound_order, hb_moves, hb_drops = core.bind_section_headings(
             preview["order"], analysis.slides)
-        # resolve_order 内部已做的绑定记录在 trace；二次绑定只报告 trim 后新增动作
+        # resolve_order 内部已做的绑定记录在 trace；二次绑定只报告本次新增动作
         n_bound = len((trace or {}).get("heading_bound", [])) + len(hb_moves)
         n_dropped = len((trace or {}).get("heading_dropped", [])) + len(hb_drops)
         bind_note = ""
@@ -612,7 +589,7 @@ def execute_command(text: str, cwd: Path, *, auto_yes: bool = False) -> str:
         if add_toc:
             toc_note += "，重组后自动插入新目录页（封面后）"
         action = (f"按「{purpose}」重组（{mode_label}{llm_label}{smart_label}"
-                  f"{trim_label}{toc_note}{bind_note}）")
+                  f"{toc_note}{bind_note}）")
         preview_text = _fmt_preview(preview, action, trace)
 
         if not auto_yes:
@@ -626,7 +603,7 @@ def execute_command(text: str, cwd: Path, *, auto_yes: bool = False) -> str:
             print()
 
         try:
-            # 写盘直接复用预览阶段已确定的顺序（含 trim/删目录调整），
+            # 写盘直接复用预览阶段已确定的顺序（含删目录调整），
             # 不再二次调用 LLM，保证"所见即所得"（预览=最终结果）
             final_order = preview["order"]
             extra = ""
@@ -861,7 +838,7 @@ def render_formats_window() -> str:
 HELP_TEXT = f"""
 ========================================
   AI PPT 结构重组 - 自然语言交互入口
-  （默认启用 LLM + 智能级联 + 清理分隔页）
+  （默认启用 LLM + 智能级联）
 ========================================
 PPT 文件请放入 ppts/ 文件夹，只需输入文件名。
 内置 3 个测试用例：test1（研究报告 18 页）/ test2（课堂教学 57 页）/ test3（招生宣讲 60 页）。
